@@ -35,32 +35,33 @@ const userSchema = new mongoose.Schema({
     email:String,
     password:String,
     googleId:String,
+    secret:String,
 });
 
 userSchema.plugin(passportLocalMongoose);  //step3
 userSchema.plugin(findOrCreate);
 
-//userSchema.plugin(encrypt,{secret:process.env.SECRET,encryptedFields:["password"]});
 
 const User = new mongoose.model("User", userSchema);
 
 passport.use(User.createStrategy());  //step4
 
+
 passport.serializeUser(function(user, cb) {
-    process.nextTick(function() {
-      return cb(null, {
-        id: user.id,
-        username: user.username,
-        picture: user.picture
-      });
+  process.nextTick(function() {
+    return cb(null, {
+      id: user.id,
+      username: user.username,
+      picture: user.picture
     });
   });
-  
-  passport.deserializeUser(function(user, cb) {
-    process.nextTick(function() {
-      return cb(null, user);
-    });
+});
+
+passport.deserializeUser(function(user, cb) {
+  process.nextTick(function() {
+    return cb(null, user);
   });
+});
 
 passport.use(new GoogleStrategy({
     clientID: process.env.CLIENT_ID,
@@ -102,15 +103,47 @@ app.get("/register",(req,res)=>{
     res.render("register.ejs")
 });
 
-app.get("/secrets",function(req,res){
+app.get("/secrets", function (req, res) {
+    // Find users with non-null secrets
+    User.find({ "secret": { $ne: null } })
+    .then(foundUsers => {
+        // Render the "secrets" view with the found users
+        res.render("secrets", { userWithSecrets: foundUsers || [] });
+    })
+    .catch(err => {
+        console.error(err);
+        // Handle the error, e.g., by sending an error response
+        res.status(500).send("Internal Server Error");
+    });
+});
+
+
+
+
+app.get("/submit",function(req,res){
     if(req.isAuthenticated()){
-        res.render("secrets");
+        res.render("submit");
     }else{
         res.redirect("/login");
     }
-})
+});
 
-app.post("/register",(req,res)=>{
+app.post("/submit",function(req,res){
+    const submittedSecret = req.body.secret;
+    console.log(submittedSecret)
+    console.log(req.user.id);
+    User.findById(req.user.id)
+    .then(foundUser => {
+        if (foundUser) {
+            foundUser.secret = submittedSecret;
+            return foundUser.save();
+        }
+    })
+    .then(() => res.redirect("/secrets"))
+    .catch(err => console.error(err)); 
+});
+
+app.post("/register",function(req,res){
     User.register({username:req.body.username},req.body.password,function(err,user){
         if(err){
             console.log(err);
